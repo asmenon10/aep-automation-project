@@ -1,48 +1,45 @@
-import json
-import os
+"""Quick smoke test — verify which sandbox you're actually connected to."""
+from __future__ import annotations
+
+import sys
 from pathlib import Path
 
-from aepp import configs, schema
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from modules.connection import connect
 
 
-def load_config(config_path: Path):
-    with config_path.open("r", encoding="utf-8") as file:
-        raw_config = json.load(file)
-
-    scopes = raw_config.get("scopes") or os.getenv("AEP_SCOPES")
-    sandbox = raw_config.get("sandbox-name") or raw_config.get("sandbox") or "prod"
-    environment = raw_config.get("environment") or "prod"
-
-    if not scopes:
-        raise ValueError(
-            "Missing OAuth scopes. Add a 'scopes' value in config/dev_config.json or set the AEP_SCOPES environment variable."
-        )
-
-    return configs.configure(
-        org_id=raw_config.get("org_id"),
-        client_id=raw_config.get("client_id") or raw_config.get("api_key"),
-        secret=raw_config.get("secret") or raw_config.get("client_secret"),
-        sandbox=sandbox,
-        environment=environment,
-        scopes=scopes,
-        connectInstance=True,
-    )
-
-def run_test():
+def main() -> None:
     try:
-        config_path = Path(__file__).parent / "config" / "dev_config.json"
-        config = load_config(config_path)
+        connect("dev")
 
-        schema_conn = schema.Schema(config=config)
-        tenant_id = schema_conn.getTenantId()
+        from aepp import schema
+        s = schema.Schema()
+        raw = s.getSchemas()
 
-        print("--- ✅ HANDSHAKE SUCCESSFUL ---")
-        print(f"Connected to Sandbox: {schema_conn.sandbox}")
-        print(f"Your Tenant ID: {tenant_id}")
+        latest_five = raw[:5] if isinstance(raw, list) else []
 
-    except Exception as e:
-        print("--- ❌ STILL FAILING ---")
-        print(f"Error: {e}")
+        print(f"\n  Latest 5 schemas in this sandbox:")
+        print(f"  {'='*50}")
+
+        for item in latest_five:
+            if isinstance(item, dict):
+                title = item.get("title", "untitled")
+                schema_id = item.get("$id", "no id")
+                print(f"    - {title}")
+                print(f"      ID: {schema_id}")
+            else:
+                print(f"    - {item}")
+
+        if not latest_five:
+            print("    No schemas found.")
+
+    except Exception as exc:
+        print(f"\n  🔴 Failed: {exc}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    run_test()
+    main()
